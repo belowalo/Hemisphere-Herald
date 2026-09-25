@@ -1303,11 +1303,19 @@ export function mergeEventFeeds(...feeds: Event[][]) {
       canonicalEvents.push(event);
     }
   }
-  return canonicalEvents.sort(
-    (left, right) =>
-      right.importanceScore - left.importanceScore ||
-      Date.parse(right.lastUpdatedAt) - Date.parse(left.lastUpdatedAt),
+  return rankEventsBySignalStrength(canonicalEvents);
+}
+
+export function compareEventsBySignalStrength(left: Event, right: Event) {
+  return (
+    right.importanceScore - left.importanceScore ||
+    Date.parse(right.lastUpdatedAt) - Date.parse(left.lastUpdatedAt) ||
+    left.id.localeCompare(right.id)
   );
+}
+
+export function rankEventsBySignalStrength(events: readonly Event[]) {
+  return [...events].sort(compareEventsBySignalStrength);
 }
 
 function articleAgeHours(article: LiveArticle, reference: number) {
@@ -1539,11 +1547,7 @@ export function buildLiveEvents(
         originalLanguage: representative?.originalLanguage,
       };
     })
-    .sort(
-      (left, right) =>
-        right.importanceScore - left.importanceScore ||
-        Date.parse(right.lastUpdatedAt) - Date.parse(left.lastUpdatedAt),
-    );
+    .sort(compareEventsBySignalStrength);
 }
 
 export function enrichEventWithCoverage(

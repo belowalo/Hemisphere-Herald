@@ -1,6 +1,8 @@
 import {
   buildLiveEvents,
+  compareEventsBySignalStrength,
   mergeEventFeeds,
+  rankEventsBySignalStrength,
 } from "@/lib/live-news";
 import { countriesMentionedByEvent } from "@/lib/map-links";
 import {
@@ -280,11 +282,7 @@ export function prepareCompleteWorldSnapshotFromFeeds(
       .map((event) => anchorEventToCountry(event, country))
       .filter(isRetainedStory);
     const latestLocalEvents = [...normalizedLocalEvents]
-      .sort(
-        (left, right) =>
-          Date.parse(right.lastUpdatedAt) - Date.parse(left.lastUpdatedAt) ||
-          right.importanceScore - left.importanceScore,
-      )
+      .sort(compareEventsBySignalStrength)
       .slice(0, MAX_PREPARED_COUNTRY_EVENTS);
     const matchingGlobalEvents =
       currentGlobalEventsByCountry.get(country.name) ?? [];
@@ -336,9 +334,13 @@ export function prepareCompleteWorldSnapshotFromFeeds(
     };
   };
   for (const feed of Object.values(countryFeeds)) {
-    feed.events = feed.events.map(finalizeEventGeography);
+    feed.events = rankEventsBySignalStrength(
+      feed.events.map(finalizeEventGeography),
+    );
   }
-  const finalizedGlobalEvents = globalEvents.map(finalizeEventGeography);
+  const finalizedGlobalEvents = rankEventsBySignalStrength(
+    globalEvents.map(finalizeEventGeography),
+  );
   return {
     scope: "live-world-view",
     version: generatedAt.slice(0, 16),

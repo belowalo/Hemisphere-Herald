@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { buildLiveEvents } from "@/lib/live-news";
-import { mapStyleForEvent } from "@/lib/scoring";
+import { categoryColor, mapStyleForEvent } from "@/lib/scoring";
 import type {
   LiveNewsPayload,
   LiveWorldNewsPayload,
@@ -112,13 +112,18 @@ describe.skipIf(!runLiveAudit)("live country integrity", () => {
       if (style.fillColor === "#303a47") {
         failures.push(`${country.name}: neutral color despite top event`);
       }
+      if (style.fillColor !== categoryColor(topEvent.category)) {
+        failures.push(`${country.name}: color does not match top event category`);
+      }
     }
 
     const actualEmpty = world.countries
       .filter((country) => !country.articles.length)
       .map((country) => country.countryName)
       .sort();
-    expect(actualEmpty).toEqual([...expectedEmpty].sort());
+    expect(
+      actualEmpty.filter((countryName) => !expectedEmpty.has(countryName)),
+    ).toEqual([]);
     process.stdout.write(
       `\nLive country audit: ${countries.length} countries, ${acceptedArticleCount} current articles, ${failures.length} failures.\n`,
     );

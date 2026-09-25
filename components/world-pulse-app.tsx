@@ -10,8 +10,10 @@ import {
   type ReactNode,
 } from "react";
 import {
+  compareEventsBySignalStrength,
   eventsDescribeSameOccurrence,
   mergeCanonicalEvents,
+  rankEventsBySignalStrength,
 } from "@/lib/live-news";
 import {
   biasDistributionForArticles,
@@ -2116,7 +2118,9 @@ export function WorldPulseApp({
       countryDirectory.map((country): MapCountry => {
         const signalFeed = countryFeeds[country.name];
         if (signalFeed) {
-          const synchronizedEvents = signalFeed.events;
+          const synchronizedEvents = rankEventsBySignalStrength(
+            signalFeed.events,
+          );
           return {
             ...country,
             events: synchronizedEvents,
@@ -2271,12 +2275,7 @@ export function WorldPulseApp({
     ],
   );
   const expandedEvents = useMemo(
-    () =>
-      [...baseEvents].sort(
-        (left, right) =>
-          right.importanceScore - left.importanceScore ||
-          Date.parse(right.lastUpdatedAt) - Date.parse(left.lastUpdatedAt),
-      ),
+    () => rankEventsBySignalStrength(baseEvents),
     [baseEvents],
   );
   const filteredEvents = useMemo(() => {
@@ -2336,12 +2335,7 @@ export function WorldPulseApp({
   const situationEvents = useMemo(
     () =>
       [...globalFeed.events]
-        .sort(
-          (left, right) =>
-            right.importanceScore - left.importanceScore ||
-            Date.parse(right.lastUpdatedAt) -
-              Date.parse(left.lastUpdatedAt),
-        )
+        .sort(compareEventsBySignalStrength)
         .slice(0, 12),
     [globalFeed.events],
   );

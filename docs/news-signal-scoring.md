@@ -45,7 +45,7 @@ Every event retains the distinct-publisher count, matched-report count, affected
 
 ## Testing and guardrails
 
-Automated tests cover missing values, clamping, every label boundary, single-report behavior, real elapsed-time momentum, map-color intensity, and geographic reach. Production reviews should also monitor score distributions by region, language, topic, and publisher mix so uneven digital reporting does not silently become a proxy for importance.
+Automated tests cover missing values, clamping, every label boundary, single-report behavior, real elapsed-time momentum, exact top-story category colors, and geographic reach. Production reviews should also monitor score distributions by region, language, topic, and publisher mix so uneven digital reporting does not silently become a proxy for importance.
 
 ## Limitations
 

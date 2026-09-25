@@ -410,4 +410,81 @@ describe("prepared minute world state", () => {
     expect(prepared.countryFeeds.Gabon.events).toEqual([]);
   });
 
+  it("puts the strongest signal first even when a weaker story is newer", () => {
+    const generatedAt = new Date().toISOString();
+    const directory: MapCountry[] = [
+      { mapId: "124", name: "Canada", iso2: "CA", events: [] },
+    ];
+    const globalPayload: LiveNewsPayload = {
+      scope: "global",
+      countryName: null,
+      generatedAt,
+      refreshAfterSeconds: 60,
+      provider: "Live providers",
+      articles: [],
+    };
+    const baseEvent = prepareCompleteWorldSnapshot(
+      globalPayload,
+      [{
+        countryName: "Canada",
+        generatedAt,
+        available: true,
+        articles: [liveArticle("canada-base", "Canada announces a new program")],
+      }],
+      directory,
+      generatedAt,
+    ).countryFeeds.Canada.events[0];
+    const newerWeakEvent = {
+      ...baseEvent,
+      id: "newer-weak-event",
+      headline: "Canada wins an international sports match",
+      category: "Sports" as const,
+      lastUpdatedAt: generatedAt,
+      scoringInput: {
+        ...baseEvent.scoringInput,
+        independentSourceCount: 1,
+        articlesPerHour: 0,
+        articleCount: 1,
+        coverageWindowHours: 0,
+      },
+    };
+    const olderStrongEvent = {
+      ...baseEvent,
+      id: "older-strong-event",
+      headline: "Canada parliament approves a national policy package",
+      category: "Politics" as const,
+      lastUpdatedAt: new Date(Date.parse(generatedAt) - 60 * 60_000).toISOString(),
+      scoringInput: {
+        ...baseEvent.scoringInput,
+        independentSourceCount: 8,
+        articlesPerHour: 3,
+        articleCount: 8,
+        coverageWindowHours: 2,
+      },
+    };
+
+    const prepared = prepareCompleteWorldSnapshotFromFeeds(
+      globalPayload,
+      {
+        Canada: {
+          events: [newerWeakEvent, olderStrongEvent],
+          updatedAt: generatedAt,
+          provider: "Stored country feed",
+          loading: false,
+          error: null,
+        },
+      },
+      directory,
+      generatedAt,
+    );
+
+    expect(prepared.countryFeeds.Canada.events[0].id).toBe(
+      "older-strong-event",
+    );
+    expect(prepared.countryFeeds.Canada.events[0].category).toBe("Politics");
+    expect(prepared.countryFeeds.Canada.events[0].importanceScore).toBeGreaterThan(
+      prepared.countryFeeds.Canada.events[1].importanceScore,
+    );
+  });
+
 });

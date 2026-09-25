@@ -55,9 +55,12 @@ describe("news signal scoring", () => {
     expect(signalLabel(score)).toBe(expected);
   });
 
-  it("makes higher scores visually more intense", () => {
-    expect(mapStyleForEvent("Politics", 20).fillColor).not.toBe(
-      mapStyleForEvent("Politics", 90).fillColor,
+  it("uses the exact top-story category color at every signal strength", () => {
+    expect(mapStyleForEvent("Politics", 20).fillColor).toBe(
+      categoryColor("Politics"),
+    );
+    expect(mapStyleForEvent("Politics", 90).fillColor).toBe(
+      categoryColor("Politics"),
     );
   });
 

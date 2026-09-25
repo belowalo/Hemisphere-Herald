@@ -82,30 +82,15 @@ export function calculateNewsSignal(input: Partial<ScoringInput>): {
   return { score, label: signalLabel(score), components };
 }
 
-function mixHex(foreground: string, background: string, amount: number) {
-  const clean = (value: string) => value.replace("#", "");
-  const fg = clean(foreground);
-  const bg = clean(background);
-  const blend = [0, 2, 4]
-    .map((index) => {
-      const a = Number.parseInt(fg.slice(index, index + 2), 16);
-      const b = Number.parseInt(bg.slice(index, index + 2), 16);
-      return Math.round(a * amount + b * (1 - amount))
-        .toString(16)
-        .padStart(2, "0");
-    })
-    .join("");
-  return `#${blend}`;
-}
-
 export function mapStyleForEvent(
   category?: Category,
   importanceScore = 0,
 ): { fillColor: string; fillOpacity: number } {
+  // Preserve the established call signature while keeping category colors exact.
+  void importanceScore;
   if (!category) return { fillColor: "#303a47", fillOpacity: 0.82 };
-  const intensity = 0.72 + clamp(importanceScore) * 0.0028;
   return {
-    fillColor: mixHex(CATEGORY_COLORS[category], "#182333", intensity),
+    fillColor: CATEGORY_COLORS[category],
     fillOpacity: 0.94,
   };
 }

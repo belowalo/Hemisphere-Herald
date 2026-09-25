@@ -32,7 +32,7 @@ The web app is at the repository root because the deployable Sites runtime expec
 
 - `components/world-map-maplibre.tsx` owns the MapLibre lifecycle, satellite imagery and terrain providers, GeoJSON country overlays, capital signal markers, selected-story arcs, hover, and selection.
 - `components/world-pulse-app.tsx` owns startup readiness, filters, country selection, the breaking-news ticker, image-backed Live Situation briefing, auto-refreshing Live News directory, event cards, and methodology.
-- `lib/scoring.ts` is UI-independent and contains score labels plus reusable category/intensity globe styling.
+- `lib/scoring.ts` is UI-independent and contains score labels plus reusable category-color globe styling.
 - `lib/live-news.ts` classifies and clusters live headline metadata into scored events.
 - `lib/seed-data.ts` contains only the initial country metadata used before the full map directory loads.
 - `public/countries.geojson` is a local, deployment-safe country dataset derived from the ISC-licensed `geojson-world-map` package.
