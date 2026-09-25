@@ -6,6 +6,7 @@ import {
 } from "../lib/country-terms";
 import { googleNewsLocaleForCountry } from "../lib/country-locale";
 import { newsTextTokens } from "../lib/live-news";
+import { canonicalPublisherKey } from "../lib/publisher-bias";
 import {
   isNonEventNewsTitle,
   isProviderErrorArticleTitle,
@@ -59,6 +60,7 @@ const MAX_PROVIDER_BYTES = 1_500_000;
 const MAX_COUNTRY_ARTICLES = 180;
 const MAX_GLOBAL_ARTICLES = 700;
 const MAX_EVENT_ARTICLES = 40;
+const TARGET_EVENT_PUBLISHERS = 5;
 const MAX_MAP_BATCH_COUNTRIES = 40;
 const MAX_MAP_ARTICLES_PER_COUNTRY = 80;
 const MIN_COUNTRY_ARTICLES_BEFORE_RETRY = 8;
@@ -957,6 +959,16 @@ function eventBingProviders(
   ];
 }
 
+function distinctEventPublisherCount(results: ProviderResult[]) {
+  return new Set(
+    results.flatMap((result) =>
+      result.articles.map((article) =>
+        canonicalPublisherKey(article.publisherName),
+      ),
+    ),
+  ).size;
+}
+
 function providersForRequest(
   scope: "country" | "global",
   countryName: string | null,
@@ -1369,7 +1381,7 @@ export async function handleLiveNews(
     scope === "country" && countryName
       ? newsSearchTerms(requestedCountry, requestedRegion)
       : [];
-  const providers =
+  let providers =
     scope === "event"
       ? backgroundEventSearch
         ? [
@@ -1427,6 +1439,39 @@ export async function handleLiveNews(
         articleMatchesEvent(article, requestedHeadline),
       );
     }
+    if (
+      backgroundEventSearch &&
+      distinctEventPublisherCount(results) < TARGET_EVENT_PUBLISHERS
+    ) {
+      const bingProviders = eventBingProviders(
+        requestedHeadline,
+        countryName,
+      );
+      const fallbackProviders = [
+        googleEventProvider(requestedHeadline, countryName, true),
+        bingProviders[0],
+        ...bingProviders.slice(2),
+      ];
+      const fallbackResults = await mapWithConcurrency(
+        fallbackProviders,
+        4,
+        async (provider) => {
+          const result = await fetchProvider(
+            provider,
+            scope,
+            countryName,
+            terms,
+            fetchImpl,
+          );
+          result.articles = result.articles.filter((article) =>
+            articleMatchesEvent(article, requestedHeadline),
+          );
+          return result;
+        },
+      );
+      providers = [...providers, ...fallbackProviders];
+      results = [...results, ...fallbackResults];
+    }
     const viewpointProviders = providers.filter((provider) =>
       /(?:Left|Center|Right)-rated coverage/.test(provider.name),
     );
@@ -1436,7 +1481,7 @@ export async function handleLiveNews(
       );
       return !result?.articles.length;
     });
-    if (viewpointRetries.length) {
+    if (!backgroundEventSearch && viewpointRetries.length) {
       const retryResults = await mapWithConcurrency(
         viewpointRetries,
         2,

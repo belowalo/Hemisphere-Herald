@@ -1,9 +1,5 @@
 import { calculateNewsSignal } from "./scoring";
-import {
-  canonicalPublisherKey,
-  publisherBiasRating,
-  showsPublisherPerspective,
-} from "./publisher-bias";
+import { canonicalPublisherKey } from "./publisher-bias";
 import {
   countrySearchTerms,
   textMatchesCountry,
@@ -729,25 +725,43 @@ const PROMINENT_PUBLISHERS = new Map<string, number>([
   ["reuters", 96],
   ["associated press", 95],
   ["agence france-presse", 94],
+  ["bloomberg", 93],
+  ["financial times", 92],
   ["bbc", 91],
   ["new york times", 90],
   ["washington post", 89],
+  ["the economist", 88],
   ["the guardian", 87],
   ["nbc news", 87],
   ["cbs news", 86],
   ["al jazeera", 86],
+  ["politico", 86],
+  ["the globe and mail", 85],
+  ["le monde", 85],
   ["cnn", 85],
   ["deutsche welle", 84],
   ["usa today", 84],
+  ["el pais", 84],
+  ["nhk", 84],
   ["france 24", 83],
+  ["the hindu", 83],
+  ["indian express", 83],
+  ["channel newsasia", 83],
+  ["yonhap", 83],
   ["cbc", 82],
+  ["radio canada", 82],
   ["abc news", 82],
+  ["global news", 82],
+  ["times of india", 82],
   ["newsweek", 81],
   ["npr", 81],
   ["un news", 81],
+  ["toronto star", 81],
+  ["japan times", 81],
   ["euronews", 80],
   ["sky news", 80],
   ["fox news", 80],
+  ["national post", 80],
   ["washington examiner", 77],
   ["national review", 76],
   ["fox weather", 79],
@@ -1116,60 +1130,18 @@ export function publisherProminence(name: string) {
   return 58;
 }
 
-function selectBalancedSources<T>(
+function selectPreferredSources<T>(
   items: T[],
   publisherName: (item: T) => string,
   publishedAt: (item: T) => string,
   limit = 5,
-  balancePerspectives = true,
 ) {
-  const ranked = [...items].sort(
+  return [...items].sort(
     (left, right) =>
       publisherProminence(publisherName(right)) -
         publisherProminence(publisherName(left)) ||
       Date.parse(publishedAt(right)) - Date.parse(publishedAt(left)),
-  );
-  if (!balancePerspectives) return ranked.slice(0, limit);
-
-  const selected: T[] = [];
-  const selectedItems = new Set<T>();
-  const takeFirst = (bucket: "left" | "center" | "right") => {
-    const match = ranked.find(
-      (item) =>
-        !selectedItems.has(item) &&
-        publisherBiasRating(publisherName(item))?.bucket === bucket,
-    );
-    if (match) {
-      selected.push(match);
-      selectedItems.add(match);
-    }
-  };
-
-  takeFirst("left");
-  takeFirst("right");
-  for (const item of ranked) {
-    if (selected.length >= limit) break;
-    if (
-      !selectedItems.has(item) &&
-      publisherBiasRating(publisherName(item))?.bucket === "center"
-    ) {
-      selected.push(item);
-      selectedItems.add(item);
-    }
-  }
-  for (const item of ranked) {
-    if (selected.length >= limit) break;
-    if (!selectedItems.has(item)) {
-      selected.push(item);
-      selectedItems.add(item);
-    }
-  }
-  return selected.sort(
-    (left, right) =>
-      publisherProminence(publisherName(right)) -
-        publisherProminence(publisherName(left)) ||
-      Date.parse(publishedAt(right)) - Date.parse(publishedAt(left)),
-  );
+  ).slice(0, limit);
 }
 
 export function mergeCanonicalEvents(
@@ -1194,12 +1166,11 @@ export function mergeCanonicalEvents(
     }
   }
   const allArticles = [...distinctArticles.values()];
-  const articles = selectBalancedSources(
+  const articles = selectPreferredSources(
     allArticles,
     (article) => article.source.publisherName,
     (article) => article.publishedAt,
     5,
-    showsPublisherPerspective(canonicalEvent.category),
   );
   const affectedCountries = [
     ...new Set(
@@ -1476,12 +1447,11 @@ export function buildLiveEvents(
         headlineCategory === "Local affairs"
           ? classifyLiveHeadline(classificationText)
           : headlineCategory;
-      const visibleSourceArticles = selectBalancedSources(
+      const visibleSourceArticles = selectPreferredSources(
         sourceArticles,
         (article) => article.publisherName,
         (article) => article.publishedAt,
         5,
-        showsPublisherPerspective(eventCategory),
       );
       const eventId = `live-event-${stableId(headline.toLowerCase())}`;
       const articles = visibleSourceArticles
@@ -1500,11 +1470,7 @@ export function buildLiveEvents(
             originalHeadline: article.originalTitle,
             originalLanguage: article.originalLanguage,
           };
-        })
-        .sort(
-          (left, right) =>
-            Date.parse(right.publishedAt) - Date.parse(left.publishedAt),
-        );
+        });
       const sources = new Map(
         sourceArticles.map((article) => {
           const source = createSource(article);
@@ -1617,12 +1583,11 @@ export function enrichEventWithCoverage(
   }
 
   const allArticles = [...combined.values()];
-  const visibleArticles = selectBalancedSources(
+  const visibleArticles = selectPreferredSources(
     allArticles,
     (article) => article.source.publisherName,
     (article) => article.publishedAt,
     5,
-    showsPublisherPerspective(event.category),
   );
   const matchedPublisherCount = Math.max(
     event.matchedPublisherCount ?? 0,

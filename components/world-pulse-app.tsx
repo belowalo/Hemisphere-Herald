@@ -610,9 +610,11 @@ function MethodologyModal({ onClose }: { onClose: () => void }) {
             A single report receives no momentum points. Momentum is calculated
             from additional matched reports divided by the observed time
             between the first and latest report. Publisher size or prominence
-            does not add points. When more than five sources match, prominence
-            and recency help choose which links are displayed, not the signal
-            score itself.
+            does not add points. The server targets five distinct publishers per
+            leading story and expands its search when the first pass falls
+            short. When more than five sources match, publisher prominence and
+            then recency choose which links are displayed. Search results that
+            cannot be verified as the same occurrence are not counted.
           </p>
           <p>
             Publisher lean labels use a checked Ground News ratings snapshot
@@ -620,10 +622,9 @@ function MethodologyModal({ onClose }: { onClose: () => void }) {
             articles or events—and use a U.S.-political reference frame. They
             appear only for politics, economy, conflict and security, and crime
             and justice stories. Unrated publishers remain visible and count
-            toward the displayed percentages. For those public-affairs topics,
-            source selection broadens viewpoint representation before using
-            prominence and recency as tie-breakers; other topics use prominence
-            and recency only.
+            toward the displayed percentages. Perspective does not determine
+            which links make the five-source list; publisher prominence and
+            recency do.
           </p>
         </div>
       </section>

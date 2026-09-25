@@ -850,7 +850,7 @@ describe("live news normalization", () => {
     });
   });
 
-  it("prioritizes left, right, and center publishers in the displayed five", () => {
+  it("shows the five most prominent publishers without forcing political balance", () => {
     const [event] = buildLiveEvents(
       {
         ...payload,
@@ -874,15 +874,16 @@ describe("live news normalization", () => {
       },
       { name: "Canada", iso2: "CA" },
     );
-    const distribution = biasDistributionForArticles(event.articles);
-
     expect(event.articles).toHaveLength(5);
-    expect(distribution.left).toBeGreaterThanOrEqual(1);
-    expect(distribution.right).toBeGreaterThanOrEqual(1);
-    expect(distribution.center).toBeGreaterThanOrEqual(1);
     expect(
       event.articles.map((article) => article.source.publisherName),
-    ).toContain("New York Post");
+    ).toEqual([
+      "Reuters",
+      "Associated Press",
+      "BBC News",
+      "CNN",
+      "New York Post",
+    ]);
   });
 
   it("uses prominence and recency rather than political balance for sports", () => {

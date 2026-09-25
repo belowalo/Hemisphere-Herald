@@ -1074,6 +1074,63 @@ describe("worker live-news providers", () => {
     ).toBe(false);
   });
 
+  it("expands a background event search until five distinct publishers are available", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const requestedUrls: string[] = [];
+    const headline = "Canada and Mexico agree a cross-border trade accord";
+    const googleItem = (id: string, publisher: string, title: string) => `
+      <item>
+        <title>${title}</title>
+        <description>Canada and Mexico reached a cross-border trade agreement.</description>
+        <link>https://${id}.example/story</link>
+        <guid>${id}</guid>
+        <pubDate>Fri, 24 Jul 2026 21:00:00 GMT</pubDate>
+        <source url="https://${id}.example">${publisher}</source>
+      </item>`;
+    const localFeed = `<rss><channel>
+      ${googleItem("reuters", "Reuters", "Canada and Mexico agree cross-border trade accord")}
+      ${googleItem("bbc", "BBC News", "Mexico backs new Canada cross-border trade agreement")}
+    </channel></rss>`;
+    const internationalFeed = `<rss><channel>
+      ${googleItem("ap", "Associated Press", "Canada-Mexico trade accord receives approval")}
+      ${googleItem("cbc", "CBC News", "Leaders approve Canada Mexico cross-border trade deal")}
+      ${googleItem("guardian", "The Guardian", "New accord expands trade between Mexico and Canada")}
+    </channel></rss>`;
+    const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.startsWith("https://news.google.com/rss/search")) {
+        const region = new URL(url).searchParams.get("gl");
+        return new Response(region === "CA" ? localFeed : internationalFeed, {
+          status: 200,
+        });
+      }
+      return new Response("Unavailable", { status: 503 });
+    });
+
+    const response = await handleLiveNews(
+      new Request(
+        "https://worldpulse.test/api/live-news?scope=event&mode=background&country=Canada&iso2=CA&headline=" +
+          encodeURIComponent(headline),
+      ),
+      fetchMock as typeof fetch,
+    );
+    const payload = (await response.json()) as {
+      articles: Array<{ publisherName: string }>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(new Set(payload.articles.map((article) => article.publisherName)).size)
+      .toBeGreaterThanOrEqual(5);
+    expect(
+      requestedUrls.some(
+        (url) =>
+          url.startsWith("https://news.google.com/rss/search") &&
+          new URL(url).searchParams.get("gl") === "US",
+      ),
+    ).toBe(true);
+  });
+
   it("finds rewritten coverage of a heatwave instead of requiring the same headline", async () => {
     const requestedQueries: string[] = [];
     const item = (

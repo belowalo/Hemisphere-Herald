@@ -22,7 +22,8 @@ const FUTURE_TOLERANCE_MS = 6 * 60 * 60_000;
 const MAX_ARTICLES_PER_COUNTRY = 60;
 const MAX_EVENTS_PER_COUNTRY = 24;
 const PRIORITY_EVENTS_WITH_FULL_COVERAGE = 6;
-const EVENT_ENRICHMENTS_PER_REFRESH = 3;
+const EVENT_ENRICHMENTS_PER_REFRESH = 6;
+const EVENT_ENRICHMENT_CONCURRENCY = 2;
 const GLOBAL_REFRESH_MS = 5 * 60_000;
 const COUNTRY_RETRY_DELAY_MS = 750;
 const EXPECTED_EMPTY_COUNTRIES = new Set([
@@ -184,32 +185,52 @@ export async function enrichCountryFeed(
   );
   if (!events.length) return feed;
 
-  const targets = events.slice(0, 2);
-  if (events.length > 2) {
-    const rotatingIndex = 2 + (cycleNumber % (events.length - 2));
+  const priorityTargetCount = Math.min(5, events.length);
+  const targets = events.slice(0, priorityTargetCount);
+  if (events.length > priorityTargetCount) {
+    const rotatingIndex =
+      priorityTargetCount +
+      (cycleNumber % (events.length - priorityTargetCount));
     targets.push(events[rotatingIndex]);
   }
   const coverage: LiveArticle[] = [];
-  for (const event of targets.slice(0, EVENT_ENRICHMENTS_PER_REFRESH)) {
-    const url = new URL("https://worldpulse.internal/api/live-news");
-    url.searchParams.set("scope", "event");
-    url.searchParams.set("mode", "background");
-    url.searchParams.set("country", countryName);
-    url.searchParams.set("headline", event.headline);
-    try {
-      const response = await handleLiveNews(new Request(url), fetchImpl);
-      if (!response.ok) continue;
-      const payload = (await response.json()) as LiveNewsPayload;
-      if (payload.scope === "event" && Array.isArray(payload.articles)) {
-        coverage.push(...payload.articles);
-      }
-    } catch (error) {
-      console.warn(JSON.stringify({
-        event: "country_event_enrichment_failed",
-        countryName,
-        headline: event.headline,
-        error: error instanceof Error ? error.message : "unknown error",
-      }));
+  const enrichmentTargets = targets.slice(0, EVENT_ENRICHMENTS_PER_REFRESH);
+  for (
+    let index = 0;
+    index < enrichmentTargets.length;
+    index += EVENT_ENRICHMENT_CONCURRENCY
+  ) {
+    const batch = enrichmentTargets.slice(
+      index,
+      index + EVENT_ENRICHMENT_CONCURRENCY,
+    );
+    const results = await Promise.all(
+      batch.map(async (event) => {
+        const url = new URL("https://worldpulse.internal/api/live-news");
+        url.searchParams.set("scope", "event");
+        url.searchParams.set("mode", "background");
+        url.searchParams.set("country", countryName);
+        url.searchParams.set("headline", event.headline);
+        try {
+          const response = await handleLiveNews(new Request(url), fetchImpl);
+          if (!response.ok) return [];
+          const payload = (await response.json()) as LiveNewsPayload;
+          return payload.scope === "event" && Array.isArray(payload.articles)
+            ? payload.articles
+            : [];
+        } catch (error) {
+          console.warn(JSON.stringify({
+            event: "country_event_enrichment_failed",
+            countryName,
+            headline: event.headline,
+            error: error instanceof Error ? error.message : "unknown error",
+          }));
+          return [];
+        }
+      }),
+    );
+    for (const articles of results) {
+      coverage.push(...articles);
     }
   }
   if (!coverage.length) return feed;
