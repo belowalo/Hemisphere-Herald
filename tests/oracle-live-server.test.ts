@@ -3,6 +3,7 @@ import type { LiveArticle, MapNewsCountryPayload } from "../lib/types";
 import {
   bootstrapProgress,
   buildWorldPayload,
+  enrichCountryFeed,
   mergeCountryFeed,
   selectDiverseCountryArticles,
   type PersistedCollectorState,
@@ -156,6 +157,57 @@ describe("Oracle live server", () => {
     expect(
       selected.filter((item) => item.id.startsWith("tariff-")).length,
     ).toBeLessThanOrEqual(5);
+  });
+
+  it("adds focused multi-publisher coverage before publishing a country feed", async () => {
+    const publishedAt = new Date().toUTCString();
+    const current: MapNewsCountryPayload = {
+      countryName: "Canada",
+      generatedAt: new Date().toISOString(),
+      available: true,
+      articles: [
+        {
+          ...article("original"),
+          title: "Canada and Mexico agree cross-border trade accord",
+          publisherName: "Original Desk",
+          publisherUrl: "https://original.example",
+        },
+      ],
+    };
+    const coverage = [
+      ["reuters", "Reuters", "Canada Mexico cross-border trade accord receives approval"],
+      ["bbc", "BBC News", "Mexico backs new Canada cross-border trade agreement"],
+      ["ap", "Associated Press", "Leaders approve Canada Mexico cross-border trade deal"],
+    ] as const;
+    const fetchMock = async (input: URL | RequestInfo) => {
+      const url = String(input);
+      const google = url.startsWith("https://news.google.com/rss/search");
+      const items = coverage.map(([id, publisher, title]) => `
+        <item>
+          <title>${title}</title>
+          <description>Canada and Mexico reached a cross-border trade agreement.</description>
+          <link>https://${id}.example/story</link>
+          <guid>${id}</guid>
+          <pubDate>${publishedAt}</pubDate>
+          ${google
+            ? `<source url="https://${id}.example">${publisher}</source>`
+            : `<News:Source>${publisher}</News:Source>`}
+        </item>`).join("");
+      return new Response(`<rss><channel>${items}</channel></rss>`, {
+        status: 200,
+      });
+    };
+
+    const enriched = await enrichCountryFeed(
+      "Canada",
+      current,
+      0,
+      fetchMock as typeof fetch,
+    );
+
+    expect(new Set(enriched.articles.map((item) => item.publisherName))).toEqual(
+      new Set(["Original Desk", "Reuters", "BBC News", "Associated Press"]),
+    );
   });
 
   it("becomes ready after global news and every country attempt, including across a restart", () => {

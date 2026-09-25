@@ -60,7 +60,7 @@ const MAX_COUNTRY_ARTICLES = 180;
 const MAX_GLOBAL_ARTICLES = 700;
 const MAX_EVENT_ARTICLES = 40;
 const MAX_MAP_BATCH_COUNTRIES = 40;
-const MAX_MAP_ARTICLES_PER_COUNTRY = 32;
+const MAX_MAP_ARTICLES_PER_COUNTRY = 80;
 const MIN_COUNTRY_ARTICLES_BEFORE_RETRY = 8;
 const CACHE_SECONDS = 300;
 const MAX_ARTICLE_AGE_MS = 8 * 24 * 60 * 60 * 1_000;
@@ -809,6 +809,43 @@ function googleCountryProvider(
   };
 }
 
+function googleEventProvider(
+  headline: string,
+  countryName: string | null,
+  internationalSearch = false,
+): NewsProvider {
+  const cleanHeadline = headline
+    .replace(/["“”]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const focusedTerms = eventTokens(cleanHeadline).slice(0, 10);
+  const locale =
+    !internationalSearch && countryName
+      ? googleNewsLocaleForCountry(countryName)
+      : { language: "en", region: "US" };
+  const countryTerm = countryName ? `"${countryName}" ` : "";
+  return {
+    name: internationalSearch
+      ? "Google News · International topic coverage"
+      : "Google News · Local topic coverage",
+    publisherUrl: "https://news.google.com/",
+    timeoutMs: 7_000,
+    filterByCountry: false,
+    url: () => {
+      const url = new URL("https://news.google.com/rss/search");
+      url.searchParams.set(
+        "q",
+        `${countryTerm}${focusedTerms.join(" ")} when:7d`.trim(),
+      );
+      url.searchParams.set("hl", "en");
+      url.searchParams.set("gl", locale.region);
+      url.searchParams.set("ceid", `${locale.region}:en`);
+      return url;
+    },
+    parse: parseGoogleNewsFeed,
+  };
+}
+
 const BING_WORLD_PROVIDER = bingNewsProvider(
   "Bing News · World",
   "world news",
@@ -1297,6 +1334,8 @@ export async function handleLiveNews(
   const requestedRegion =
     url.searchParams.get("iso2")?.trim().toUpperCase() ?? "";
   const requestedHeadline = url.searchParams.get("headline")?.trim() ?? "";
+  const backgroundEventSearch =
+    scope === "event" && url.searchParams.get("mode") === "background";
   if (
     scope === "country" &&
     (!requestedCountry ||
@@ -1332,10 +1371,16 @@ export async function handleLiveNews(
       : [];
   const providers =
     scope === "event"
-      ? [
-          ...eventBingProviders(requestedHeadline, countryName),
-          ...CORE_PROVIDERS,
-        ]
+      ? backgroundEventSearch
+        ? [
+            googleEventProvider(requestedHeadline, countryName),
+            eventBingProviders(requestedHeadline, countryName)[1],
+          ]
+        : [
+            googleEventProvider(requestedHeadline, countryName),
+            googleEventProvider(requestedHeadline, countryName, true),
+            ...eventBingProviders(requestedHeadline, countryName),
+          ]
       : providersForRequest(scope, countryName);
   let results = await mapWithConcurrency(
     providers,

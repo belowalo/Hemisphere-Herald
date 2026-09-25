@@ -597,9 +597,11 @@ function MethodologyModal({ onClose }: { onClose: () => void }) {
           </p>
           <p>
             Similar headlines are clustered conservatively, publishers are
-            deduplicated by identity, and event summaries are short extracts
-            from available feed descriptions rather than generated claims. The
-            globe draws a connection only after a story is selected and only
+            deduplicated by identity, and the live server continuously expands
+            leading events with focused topic searches before the world feed is
+            delivered. Event summaries are short extracts from available feed
+            descriptions rather than generated claims. The globe draws a
+            connection only after a story is selected and only
             when at least two countries are explicitly named in that story’s
             headline evidence. Capital markers are geographic reference points,
             not claims that an event occurred in the capital.

@@ -19,7 +19,10 @@ const REPOSITORY_DIR = resolve(SERVER_DIR, "..");
 const DEFAULT_DATA_PATH = resolve(REPOSITORY_DIR, ".runtime", "world-live.json");
 const ARTICLE_RETENTION_MS = 8 * 24 * 60 * 60_000;
 const FUTURE_TOLERANCE_MS = 6 * 60 * 60_000;
-const MAX_ARTICLES_PER_COUNTRY = 20;
+const MAX_ARTICLES_PER_COUNTRY = 60;
+const MAX_EVENTS_PER_COUNTRY = 24;
+const PRIORITY_EVENTS_WITH_FULL_COVERAGE = 6;
+const EVENT_ENRICHMENTS_PER_REFRESH = 3;
 const GLOBAL_REFRESH_MS = 5 * 60_000;
 const COUNTRY_RETRY_DELAY_MS = 750;
 const EXPECTED_EMPTY_COUNTRIES = new Set([
@@ -112,27 +115,112 @@ export function selectDiverseCountryArticles(
   const originalsByUrl = new Map(
     ranked.map((article) => [article.url, article] as const),
   );
+  const retainedEvents = events.slice(0, MAX_EVENTS_PER_COUNTRY);
   const selected: LiveArticle[] = [];
   const selectedKeys = new Set<string>();
 
-  // Take one representative from every leading event before taking a second
-  // source from any event. A single breaking story can no longer fill all of
-  // a country's retained slots, while multi-source events still keep context.
-  for (let sourceDepth = 0; sourceDepth < 5; sourceDepth += 1) {
-    for (const event of events) {
-      const visibleArticle = event.articles[sourceDepth];
-      if (!visibleArticle) continue;
-      const original = originalsByUrl.get(visibleArticle.originalUrl);
-      if (!original) continue;
-      const key = articleKey(original);
-      if (selectedKeys.has(key)) continue;
-      selected.push(original);
-      selectedKeys.add(key);
+  const addVisibleArticle = (eventIndex: number, sourceDepth: number) => {
+    const visibleArticle = retainedEvents[eventIndex]?.articles[sourceDepth];
+    if (!visibleArticle) return false;
+    const original = originalsByUrl.get(visibleArticle.originalUrl);
+    if (!original) return false;
+    const key = articleKey(original);
+    if (selectedKeys.has(key)) return false;
+    selected.push(original);
+    selectedKeys.add(key);
+    return true;
+  };
+
+  // Keep breadth first, then preserve up to five independent publishers for
+  // the leading events before distributing remaining slots across the rest.
+  for (let eventIndex = 0; eventIndex < retainedEvents.length; eventIndex += 1) {
+    addVisibleArticle(eventIndex, 0);
+    if (selected.length === limit) return selected;
+  }
+  for (let sourceDepth = 1; sourceDepth < 5; sourceDepth += 1) {
+    for (
+      let eventIndex = 0;
+      eventIndex < Math.min(
+        PRIORITY_EVENTS_WITH_FULL_COVERAGE,
+        retainedEvents.length,
+      );
+      eventIndex += 1
+    ) {
+      addVisibleArticle(eventIndex, sourceDepth);
+      if (selected.length === limit) return selected;
+    }
+  }
+  for (let sourceDepth = 1; sourceDepth < 5; sourceDepth += 1) {
+    for (
+      let eventIndex = PRIORITY_EVENTS_WITH_FULL_COVERAGE;
+      eventIndex < retainedEvents.length;
+      eventIndex += 1
+    ) {
+      addVisibleArticle(eventIndex, sourceDepth);
       if (selected.length === limit) return selected;
     }
   }
 
   return selected;
+}
+
+export async function enrichCountryFeed(
+  countryName: string,
+  feed: MapNewsCountryPayload,
+  cycleNumber: number,
+  fetchImpl: FetchImplementation,
+) {
+  if (!feed.articles.length) return feed;
+  const events = buildLiveEvents(
+    {
+      countryName,
+      scope: "country",
+      generatedAt: feed.generatedAt,
+      refreshAfterSeconds: 60,
+      provider: "Hemisphere Herald live collector",
+      articles: feed.articles,
+    },
+    { name: countryName },
+  );
+  if (!events.length) return feed;
+
+  const targets = events.slice(0, 2);
+  if (events.length > 2) {
+    const rotatingIndex = 2 + (cycleNumber % (events.length - 2));
+    targets.push(events[rotatingIndex]);
+  }
+  const coverage: LiveArticle[] = [];
+  for (const event of targets.slice(0, EVENT_ENRICHMENTS_PER_REFRESH)) {
+    const url = new URL("https://worldpulse.internal/api/live-news");
+    url.searchParams.set("scope", "event");
+    url.searchParams.set("mode", "background");
+    url.searchParams.set("country", countryName);
+    url.searchParams.set("headline", event.headline);
+    try {
+      const response = await handleLiveNews(new Request(url), fetchImpl);
+      if (!response.ok) continue;
+      const payload = (await response.json()) as LiveNewsPayload;
+      if (payload.scope === "event" && Array.isArray(payload.articles)) {
+        coverage.push(...payload.articles);
+      }
+    } catch (error) {
+      console.warn(JSON.stringify({
+        event: "country_event_enrichment_failed",
+        countryName,
+        headline: event.headline,
+        error: error instanceof Error ? error.message : "unknown error",
+      }));
+    }
+  }
+  if (!coverage.length) return feed;
+  return mergeCountryFeed(
+    countryName,
+    feed,
+    {
+      ...feed,
+      articles: [...feed.articles, ...coverage],
+    },
+  );
 }
 
 export function mergeCountryFeed(
@@ -328,10 +416,16 @@ async function refreshCountry(
   if (payload.scope !== "map" || !Array.isArray(payload.countries)) {
     throw new Error(`${countryName} refresh returned an invalid payload.`);
   }
-  runtime.state.countries[countryName] = mergeCountryFeed(
+  const merged = mergeCountryFeed(
     countryName,
     runtime.state.countries[countryName],
     payload.countries.find((country) => country.countryName === countryName),
+  );
+  runtime.state.countries[countryName] = await enrichCountryFeed(
+    countryName,
+    merged,
+    runtime.state.cycleNumber,
+    fetchImpl,
   );
 }
 

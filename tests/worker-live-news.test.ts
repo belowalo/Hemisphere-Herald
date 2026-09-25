@@ -1026,6 +1026,11 @@ describe("worker live-news providers", () => {
     ).toBe(true);
     expect(
       requestedUrls.some((url) =>
+        url.startsWith("https://news.google.com/rss/search"),
+      ),
+    ).toBe(true);
+    expect(
+      requestedUrls.some((url) =>
         new URL(url).searchParams
           .get("q")
           ?.includes('"Canada and Mexico agree a cross-border trade accord"'),
